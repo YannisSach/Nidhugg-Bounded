@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <iostream>
 
+#define BOUND_LIMIT 2
 TSOTraceBuilder::TSOTraceBuilder(const Configuration &conf) : TSOPSOTraceBuilder(conf) {
   threads.push_back(Thread(CPid(),{}));
   threads.push_back(Thread(CPS.new_aux(CPid()),{}));
@@ -120,6 +121,18 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   //  std::cout<<prefix[i].current_cnt<<" ";
   //}
   //std::cout<<"\n";
+ //  std::cout << "Available:\n";
+ //  for(p = 0; p < sz; p++){
+ //    std::cout<< threads[p].available << ",";
+ //  }
+ //  std::cout << "\nAwake:\n";
+
+ // for(p = 0; p < sz; p++){
+ //    std::cout<< !threads[p].sleeping << ",";
+ //  }
+ //  std::cout<<"\n";
+
+retry:
   for(p = 1; p < sz; p += 2){ // Loop through auxiliary threads
     if(threads[p].available && !threads[p].sleeping &&
        (conf.max_search_depth < 0 || threads[p].clock[p] < conf.max_search_depth)){
@@ -131,6 +144,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
       assert(int(prefix_idx.size()) - 1 == prefix_idx);
       if(is_previous_available && p != previous_id)
       {
+        if(bound_cnt >= BOUND_LIMIT) return false;
         bound_cnt++;
       }
       prefix[prefix_idx].current_cnt = bound_cnt;
@@ -148,6 +162,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
       *proc = p/2;
       if(is_previous_available && p != previous_id)
       {
+        if(bound_cnt >= BOUND_LIMIT) return false;
         bound_cnt++;
       }
       prefix[prefix_idx].current_cnt = bound_cnt;
@@ -156,6 +171,16 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
     }
   }
 
+  for(p = 0; p < sz; p++){
+    threads[p].sleeping = false;
+  }
+  bool nobody_available = true;
+  for(p = 0; p < sz && nobody_available; p++){
+    if(threads[p].available)
+      nobody_available = false;
+  }
+  if(!nobody_available)
+  goto retry;
   return false; // No available threads
 }
 
@@ -235,7 +260,13 @@ bool TSOTraceBuilder::reset(){
   int i;
   for(i = int(prefix.size())-1; 0 <= i; --i){
     if(prefix[i].branch.size()){
-      std::cout<<"Prefix:"<<prefix[i].iid.get_pid()<<'\n';
+      // std::cout<<"backtracking to " << i << "\nbranch: \n";
+      // for(int j = 0; j < prefix[i].branch.size(); j++)
+      //   std::cout << prefix[i].branch[j].pid << ",";
+      // std::cout<<"\nsleep: \n";
+      // for(int j = 0; j < prefix[i].sleep.size(); j++)
+      //   std::cout << prefix[i].sleep[j] << ",";
+      // std::cout<<"\n";
       break;
     }
   }
@@ -269,10 +300,15 @@ bool TSOTraceBuilder::reset(){
     evt.branch.erase(br);
     evt.sleep = prefix[i].sleep;
     if(br.pid != prefix[i].iid.get_pid()){
+      std::cout<< "Going to sleep " << prefix[i].iid.get_pid() << " at " << i << "\n";
       evt.sleep.insert(prefix[i].iid.get_pid());
-      //Yannis
+//Yannis
+     
       //bound_cnt++;
-    }
+    } 
+
+    //for (IPid p : prefix[i].sleep)
+     //   evt.sleep.insert(p);
     evt.sleep_branch_trace_count =
       prefix[i].sleep_branch_trace_count + estimate_trace_count(i+1);
 
@@ -389,6 +425,7 @@ void TSOTraceBuilder::store(const ConstMRef &ml){
 
 void TSOTraceBuilder::atomic_store(const ConstMRef &ml){
   if(dryrun){
+  std::cout << "atomic_store\n";
     assert(prefix_idx+1 < int(prefix.size()));
     assert(dry_sleepers <= prefix[prefix_idx+1].sleep.size());
     IPid pid = prefix[prefix_idx+1].sleep[dry_sleepers-1];
@@ -910,7 +947,38 @@ VecSet<TSOTraceBuilder::IPid> TSOTraceBuilder::sleep_set_at(int i){
   return sleep;
 }
 
-void TSOTraceBuilder::see_events(const VecSet<int> &seen_accesses){// Creating a source set 
+// void TSOTraceBuilder::see_events(const VecSet<int> &seen_accesses){// Finding I set or WI 
+//   /* Register new branches */
+//   std::vector<int> branch;
+//   for(int i : seen_accesses){
+//     if(i < 0) continue;
+//     const VClock<IPid> &iclock = prefix[i].clock;
+//     // This event happens before current event
+//     if(iclock.leq(curnode().clock)) continue;
+//     // there is another event happening before this one (not the current one)
+//     if(std::any_of(seen_accesses.begin(),seen_accesses.end(),
+//                    [i,&iclock,this](int j){
+//                      return 0 <= j && i != j && iclock.leq(this->prefix[j].clock);
+//                    })) continue;
+//     branch.push_back(i);
+//   }
+
+//   /* Add clocks from seen accesses */
+//   IPid ipid = curnode().iid.get_pid();
+//   for(int i : seen_accesses){
+//     if(i < 0) continue;
+//     assert(0 <= i && i <= prefix_idx);
+//     curnode().clock += prefix[i].clock;
+//     threads[ipid].clock += prefix[i].clock;
+//   }
+
+//   for(int i : branch){
+//     add_branch(i,prefix_idx);
+//   }
+// }
+
+
+void TSOTraceBuilder::see_events(const VecSet<int> &seen_accesses){// Finding I set or WI 
   /* Register new branches */
   std::vector<int> branch;
   for(int i : seen_accesses){
@@ -923,7 +991,24 @@ void TSOTraceBuilder::see_events(const VecSet<int> &seen_accesses){// Creating a
                    [i,&iclock,this](int j){
                      return 0 <= j && i != j && iclock.leq(this->prefix[j].clock);
                    })) continue;
+    std::cout<< "Adding backtrack to " << i << "\n";
     branch.push_back(i);
+    int current_proc = prefix[i].iid.get_pid();
+    int k;
+    //if(i>0)
+    //if(current_proc != prefix[i+1].iid.get_pid())
+    //branch.push_back(i+1);
+    for(k = i-1; k>=0 && current_proc == prefix[k].iid.get_pid();   k--){
+      if(prefix[k].clock.includes(IID<int>(prefix[k].iid.get_pid(), 1))){
+        k++;
+        break;
+      }
+    }
+    if(k > -1) {
+      branch.push_back(k-1);
+      std::cout<< "Adding backtrack2 to " << k << "\n";
+     } 
+     
   }
 
   /* Add clocks from seen accesses */
@@ -937,8 +1022,10 @@ void TSOTraceBuilder::see_events(const VecSet<int> &seen_accesses){// Creating a
 
   for(int i : branch){
     add_branch(i,prefix_idx);
-  }
+  } 
+
 }
+
 
 void TSOTraceBuilder::add_branch(int i, int j){
   assert(0 <= i);
@@ -991,6 +1078,7 @@ void TSOTraceBuilder::add_branch(int i, int j){
   }
 
   assert(0 <= cand.pid);
+  std::cout << "New candidate added \n";
   prefix[i].branch.insert(cand);
 }
 
@@ -1038,6 +1126,7 @@ void TSOTraceBuilder::wakeup(Access::Type type, void const *ml){
     }
   case Access::W:
     {
+      // std::cout << "Waking up for write access...\n";
       for(unsigned p = 0; p < threads.size(); ++p){
         if(threads[p].sleep_full_memory_conflict ||
            (int(p) + 1 != pid &&
