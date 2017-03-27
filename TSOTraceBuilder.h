@@ -331,6 +331,7 @@ protected:
 
     //Yannis
     int current_cnt;
+    IPid spawned_thread;
   };
 
   /* The fixed prefix of events in the current execution. This may be

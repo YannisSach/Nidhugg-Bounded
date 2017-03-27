@@ -44,7 +44,9 @@ public:
   TraceBuilder(const Configuration &conf = Configuration::default_conf);
 
   //Yannis
+  int bound_limit;
   int bound_cnt;
+  bool bound_reset;
   virtual ~TraceBuilder();
   /* Returns true iff the sleepset is currently empty. */
   virtual bool sleepset_is_empty() const = 0;
