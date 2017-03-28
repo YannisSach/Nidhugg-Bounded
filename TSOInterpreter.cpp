@@ -163,7 +163,6 @@ void TSOInterpreter::terminate(llvm::Type *RetTy, llvm::GenericValue Result){
 
 bool TSOInterpreter::checkRefuse(llvm::Instruction &I){
   int tid;
-    llvm::dbgs()<<"LoadInst\n";
   if(isPthreadJoin(I,&tid)){
     if(0 <= tid && tid < int(Threads.size()) && tid != CurrentThread){
       if(Threads[tid].ECStack.size() ||

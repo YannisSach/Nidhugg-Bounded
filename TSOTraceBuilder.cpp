@@ -112,10 +112,17 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
    */
   const unsigned sz = threads.size();
   unsigned p;
+  //get the current count from the previous prefix because a refused schedule might had happened
+  if(prefix_idx > 0)
+    bound_cnt = prefix[prefix_idx-1].current_cnt;
+
 
   int previous_id = prefix_idx ? prefix[prefix_idx - 1].iid.get_pid() : 0;
-  //std::cout<<"Available:"<<prefix_idx<<" "<<threads[0].available << " \n";
-  bool is_previous_available = prefix_idx ? threads[previous_id].available : true ;
+  bool is_previous_available = threads.size() > previous_id && prefix_idx ? threads[previous_id].available : false ;
+  // if(is_previous_available)
+    // std::cout<<prefix_idx<<" Available:"<<previous_id<<" "<<threads[previous_id].available << " \n";
+  // else
+    // std::cout << prefix_idx << " Not Available:" << previous_id << " " << false << "\n";
   //for(int i=0;i<prefix.size();i++){
   //  std::cout<<prefix[i].current_cnt<<" ";
   //}
@@ -130,7 +137,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
  //    std::cout<< !threads[p].sleeping << ",";
  //  }
  //  std::cout<<"\n";
-      if(conf.preemption_bound >=0 && bound_cnt >= conf.preemption_bound){
+  if(conf.preemption_bound >=0 && bound_cnt > conf.preemption_bound){
         return false;
       } 
 
@@ -147,9 +154,14 @@ retry:
       if(is_previous_available && p != previous_id)
       {
         bound_cnt++;
+      }if(conf.preemption_bound >=0 && bound_cnt > conf.preemption_bound) {
+        if(is_previous_available && p != previous_id)
+          bound_cnt--;
+        --threads[p].clock[p];
+        prefix.pop_back();
+        continue;
       }
       prefix[prefix_idx].current_cnt = bound_cnt;
-      if(conf.preemption_bound >=0 && bound_cnt >= conf.preemption_bound) return false;
       *aux = 0;
       return true;
     }
@@ -164,9 +176,10 @@ retry:
       *proc = p/2;
       if(is_previous_available && p != previous_id)
       {
+        // std::cout <<prefix_idx <<" " << p << " " << previous_id << "\n";
         bound_cnt++;
       }
-      if(conf.preemption_bound >=0 && bound_cnt >= conf.preemption_bound) {
+      if(conf.preemption_bound >=0 && bound_cnt > conf.preemption_bound) {
         if(is_previous_available && p != previous_id)
           bound_cnt--;
         --threads[p].clock[p];
@@ -179,9 +192,9 @@ retry:
         //   break;
         // }
         // }
-        // bound_reset = true;
-        return false;
+        // bound_reset = true
       }
+      // std::cout << prefix_idx << " Scheduled: " << p << "\n";
       prefix[prefix_idx].current_cnt = bound_cnt;
       *aux = -1;
       return true;
@@ -189,7 +202,6 @@ retry:
   }
 
   if(conf.preemption_bound >= 0){
-    std::cout<< "Forced to wakeup at "<< prefix_idx << "...\n";
     for(p = 0; p < sz; p++){
       threads[p].sleeping = false;
       prefix[prefix_idx-1].wakeup.insert(p);
@@ -199,8 +211,10 @@ retry:
       if(threads[p].available)
         nobody_available = false;
     }
-    if(!nobody_available)
+    if(!nobody_available){
+      // std::cout<< "Forced to wakeup at "<< prefix_idx << "...\n";
       goto retry;
+    }
   }
   return false; // No available threads
 }
@@ -280,8 +294,8 @@ bool TSOTraceBuilder::reset(){
 
   int i;
   for(i = int(prefix.size())-1; 0 <= i; --i){
-    threads[prefix[i-1].iid.get_pid()].available = false;
     if( i > 0){
+      threads[prefix[i-1].iid.get_pid()].available = false;
       if(prefix[i].current_cnt > prefix[i-1].current_cnt ||
         (prefix[i].current_cnt == prefix[i-1].current_cnt && prefix[i].iid.get_pid() == prefix[i-1].iid.get_pid())) {
         threads[prefix[i-1].iid.get_pid()].available = true;
@@ -317,10 +331,10 @@ bool TSOTraceBuilder::reset(){
     }
 
     if(i>0){
-      std::cout << "Available threads:\n";
-      for(int k= 0; k < threads.size(); k++)
-        std::cout << threads[k].available << " ";
-      std::cout << std::endl;
+      // std::cout << "Available threads:\n";
+      // for(int k= 0; k < threads.size(); k++)
+        // std::cout << threads[k].available << " ";
+      // std::cout << std::endl;
       bound_cnt = prefix[i-1].current_cnt;
       if(prefix[i-1].iid.get_pid() != br.pid && threads[prefix[i-1].iid.get_pid()].available){
         bound_cnt++;

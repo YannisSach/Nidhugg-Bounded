@@ -282,7 +282,7 @@ protected:
     Event(const IID<IPid> &iid,
           const VClock<IPid> &clk)
       : iid(iid), origin_iid(iid), size(1), alt(0), md(0), clock(clk),
-        may_conflict(false), sleep_branch_trace_count(0), current_cnt(0) {};
+        may_conflict(false), sleep_branch_trace_count(0), current_cnt(0),spawned_thread(-1) {};
     /* The identifier for the first event in this event sequence. */
     IID<IPid> iid;
     /* The IID of the program instruction which is the origin of this
