@@ -77,6 +77,7 @@
 #include <llvm/Support/MathExtras.h>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -3075,6 +3076,9 @@ void Interpreter::callAssertFail(Function *F,
 //
 void Interpreter::callFunction(Function *F,
                                const std::vector<GenericValue> &ArgVals) {
+  if(!TB.canRunThisInstruction()){
+    return;
+  }
   if(F->getName().str() == "pthread_create"){
     callPthreadCreate(F,ArgVals);
     return;
@@ -3150,6 +3154,7 @@ void Interpreter::callFunction(Function *F,
   }
 
   // Make a new stack frame... and fill it in.
+  // std::cout <<CurrentThread<< "Calling Function\n";
   ECStack()->push_back(ExecutionContext());
   ExecutionContext &StackFrame = ECStack()->back();
   StackFrame.CurFunction = F;
@@ -3334,7 +3339,13 @@ void Interpreter::run() {
 
     // Interpret a single instruction & increment the "PC".
     ExecutionContext &SF = ECStack()->back();  // Current stack frame
-    Instruction &I = *SF.CurInst++;            // Increment before execute
+      // Instruction &I = *SF.CurInst++;
+    // for(int i=0; i< Threads.size(); i++)
+      // std::cout << Threads[i].ECStack.size();
+    // std::cout<< "\n";
+    Instruction &I = *SF.CurInst;
+    *SF.CurInst++;
+    // std::cout<<"StackSize:" << Threads.size() << "\n";
 
     if(isUnknownIntrinsic(I)){
       /* This instruction is intrinsic. It will be removed from the IR
@@ -3396,6 +3407,7 @@ void Interpreter::run() {
       DryRunMem.clear();
     }
   }
+  // std::cout << "Clearing Stack\n";
   CurrentThread = 0;
   clearAllStacks();
 }

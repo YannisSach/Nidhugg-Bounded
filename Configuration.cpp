@@ -92,7 +92,7 @@ const std::set<std::string> &Configuration::commandline_opts(){
     "unroll",
     "print-progress",
     "print-progress-estimate",
-    "preemption_bound"
+    "preemption-bound"
   };
   return opts;
 }
