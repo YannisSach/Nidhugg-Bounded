@@ -47,6 +47,7 @@ public:
   int bound_limit;
   int bound_cnt;
   bool bound_reset;
+  int hard_reset_allowed;
   virtual ~TraceBuilder();
   /* Returns true iff the sleepset is currently empty. */
   virtual bool sleepset_is_empty() const = 0;

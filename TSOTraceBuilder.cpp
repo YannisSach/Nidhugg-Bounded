@@ -90,7 +90,7 @@ bool TSOTraceBuilder::schedule(int *proc, int *aux, int *alt, bool *dryrun){
   /* Create a new Event */
 
   /* Should we merge the last two events? */
-  if(false && prefix.size() > 1 &&
+  if(prefix.size() > 1 &&
      prefix[prefix.size()-1].iid.get_pid() == prefix[prefix.size()-2].iid.get_pid() &&
      !prefix[prefix.size()-1].may_conflict &&
      prefix[prefix.size()-1].sleep.empty()){
@@ -198,6 +198,8 @@ retry:
   }
 
   if(conf.preemption_bound >= 0){
+
+
     for(p = 0; p < sz; p++){
       threads[p].sleeping = false;
       prefix[prefix_idx-1].wakeup.insert(p);
@@ -209,7 +211,11 @@ retry:
     }
     if(!nobody_available){
       // threads[0].available = true;
-      std::cout<< "Forced to wakeup at "<< prefix_idx << "...\n";
+    if(hard_reset_allowed <= 0){
+      return false;
+    }
+      // std::cout<< "Forced to wakeup at "<< prefix_idx << "...\n";
+      hard_reset_allowed--;
       goto retry;
     }
   }
@@ -968,7 +974,10 @@ int TSOTraceBuilder::cond_destroy(const ConstMRef &ml){
 
 
 bool TSOTraceBuilder::canRunThisInstruction(){
-  return !this->dryrun;
+  int a = conf.preemption_bound;
+  if(a < 0) return true;
+  return (!this->dryrun);
+  
 }
 
 void TSOTraceBuilder::register_alternatives(int alt_count){
